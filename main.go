@@ -41,9 +41,8 @@ func main() {
 		}
 	*/
 
-	ess := expandSurveySet(ss, species)
-	fmt.Fprintf(os.Stderr, "expanded from %d to %d\n", len(ss), len(ess))
-	writeSurveySet(ess)
+	out := expandSurveySet(ss, species)
+	fmt.Fprintf(os.Stderr, "expanded from %d to %d\n", len(ss), out)
 }
 
 func exit(msg string) {
@@ -188,14 +187,21 @@ func writeSurveySet(ss surveySet) {
 	}
 }
 
-func expandSurveySet(ss surveySet, species []int) surveySet {
-	ess := make([]survey, 0, len(ss))
+func expandSurveySet(ss surveySet, species []int) int {
+	cw := csv.NewWriter(os.Stdout)
+	cw.Write(surveyHeader)
+	outCount := 0
 	i := 0
 	tuples := 0
 	for {
 		if i == len(ss) {
+			cw.Flush()
+			if err := cw.Error(); err != nil {
+				exit(fmt.Sprintf("error writing CSV: %s", err))
+			}
+
 			fmt.Fprintf(os.Stderr, "%d tuples\n", tuples)
-			return ess
+			return outCount
 		}
 
 		route := ss[i].Route
@@ -204,7 +210,7 @@ func expandSurveySet(ss surveySet, species []int) surveySet {
 		inTuple := true
 		for _, aou := range species {
 			if inTuple && aou == ss[i].Species {
-				ess = append(ess, ss[i])
+				cw.Write(ss[i].toStrings())
 				/* eat the real entry, if next entry has different
 				{route, year} then we just fill with empties */
 				i++
@@ -212,7 +218,7 @@ func expandSurveySet(ss surveySet, species []int) surveySet {
 					inTuple = false
 				}
 			} else {
-				ess = append(ess, emptySurvey(route, year, aou))
+				cw.Write(emptySurvey(route, year, aou).toStrings())
 			}
 		}
 	}
