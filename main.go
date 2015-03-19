@@ -187,7 +187,16 @@ func writeSurveySet(ss surveySet) {
 	}
 }
 
+func toMap(l []int) map[int]int {
+	m := make(map[int]int, len(l))
+	for _, v := range l {
+		m[v] = 1
+	}
+	return m
+}
+
 func expandSurveySet(ss surveySet, species []int) int {
+	aouMap := toMap(species)
 	cw := csv.NewWriter(os.Stdout)
 	cw.Write(surveyHeader)
 	outCount := 0
@@ -211,14 +220,21 @@ func expandSurveySet(ss surveySet, species []int) int {
 		for _, aou := range species {
 			if inTuple && aou == ss[i].Species {
 				cw.Write(ss[i].toStrings())
+				outCount++
 				/* eat the real entry, if next entry has different
 				{route, year} then we just fill with empties */
 				i++
+				for i < len(ss) && aouMap[ss[i].Species] == 0 {
+					// Ignore invalid species
+					fmt.Fprintf(os.Stderr, "ignoring species %d line %d\n", ss[i].Species, i)
+					i++
+				}
 				if i == len(ss) || (ss[i].Route != route || ss[i].Year != year) {
 					inTuple = false
 				}
 			} else {
 				cw.Write(emptySurvey(route, year, aou).toStrings())
+				outCount++
 			}
 		}
 	}
