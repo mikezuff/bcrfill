@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -148,19 +149,45 @@ var (
 
 func isHeader(in []string) bool {
 	if len(in) < len(surveyHeader) {
+		fmt.Fprintf(os.Stderr, "expected %d columns, input has %d\n", len(surveyHeader), len(in))
 		return false
 	}
 
 	for i, e := range surveyHeader {
 		if e != in[i] {
+			fmt.Fprintf(os.Stderr, "column %d labeled \"%s\", expected \"%s\"\n", i, in[i], e)
 			return false
 		}
 	}
 	return true
 }
 
+type replaceReader struct {
+	offset int
+	r      io.Reader
+	from   byte
+	to     byte
+}
+
+func (rr *replaceReader) Read(p []byte) (n int, err error) {
+	n, err = rr.r.Read(p)
+	for i, b := range p[:n] {
+		if b == rr.from {
+			p[i] = rr.to
+			fmt.Fprintf(os.Stderr, "replaced 0x%x with 0x%x at %d\n", rr.from, rr.to, rr.offset)
+		}
+		rr.offset++
+	}
+	return
+}
+
 func readSurveySet() surveySet {
-	cr := csv.NewReader(os.Stdin)
+	rr := &replaceReader{
+		r:    os.Stdin,
+		from: 0xd,
+		to:   0xa,
+	}
+	cr := csv.NewReader(rr)
 	recs, err := cr.ReadAll()
 	if err != nil {
 		exit(err.Error())
@@ -209,6 +236,7 @@ func expandSurveySet(ss surveySet, species []int) int {
 	outCount := 0
 	i := 0
 	tuples := 0
+	seen := make(map[string]int)
 	for {
 		if i == len(ss) {
 			cw.Flush()
@@ -216,12 +244,21 @@ func expandSurveySet(ss surveySet, species []int) int {
 				exit(fmt.Sprintf("error writing CSV: %s", err))
 			}
 
-			fmt.Fprintf(os.Stderr, "%d tuples\n", tuples)
+			fmt.Fprintf(os.Stderr, "unique {route,year} tuples: %d\n", tuples)
 			return outCount
 		}
 
 		route := ss[i].Route
 		year := ss[i].Year
+		label := fmt.Sprintf("{%d,%d}", route, year)
+		if seenOutCount, ok := seen[label]; ok {
+			cw.Flush()
+			fmt.Fprintf(os.Stderr, "already seen this {route,year} tuple at line %d: %s, bailing out\n", seenOutCount, label)
+			return outCount
+		} else {
+			seen[label] = outCount
+		}
+
 		tuples++
 		inTuple := true
 		for _, aou := range species {
@@ -233,7 +270,7 @@ func expandSurveySet(ss surveySet, species []int) int {
 				i++
 				for i < len(ss) && aouMap[ss[i].Species] == 0 {
 					// Ignore invalid species
-					fmt.Fprintf(os.Stderr, "ignoring species %d line %d\n", ss[i].Species, i)
+					fmt.Fprintf(os.Stderr, "ignoring unknown species %d line %d\n", ss[i].Species, i)
 					i++
 				}
 				if i == len(ss) || (ss[i].Route != route || ss[i].Year != year) {
