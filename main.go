@@ -18,6 +18,13 @@ func main() {
 	var (
 		sFn string
 	)
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -s speciesList.csv < bcrnozeroes.csv > bcrwithzeroes.csv\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\n Ensure every {species, year} tuple is present in csv.\n")
+		fmt.Fprintf(os.Stderr, "\nOptions:\n")
+		flag.PrintDefaults()
+	}
 	flag.StringVar(&sFn, "s", "", "File containing full species list")
 	flag.Parse()
 
